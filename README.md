@@ -12,8 +12,6 @@ CLASP discovers sparse, reproducible feature sets by stochastically optimizing c
 
 ## Repository Structure
 
-## 📁 Repository Structure
-
 ```text
 .
 ├── data/                               # Dataset files
