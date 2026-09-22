@@ -1,0 +1,131 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# 1. Configuration and Data Loading
+FILE_PATH = "/projectnb/ace-ig/enrique/unsupervised_clustering/_stab_UFS/simulation/results/runtime_benchmark.csv"
+TARGET_METHOD = "stacsfs"
+
+# Define your desired method order, display names, and consistent colors
+# Feel free to adjust the hex codes to match your overarching color palette
+METHOD_CONFIG = {
+    'laplacian': {'name': 'Laplacian', 'color': '#ffd166'},
+    'ica':       {'name': 'ICA',       'color': '#ff9f1c'},
+    'mcfs':      {'name': 'MCFS',      'color': '#f4a261'},
+    'spec':      {'name': 'SPEC',      'color': '#e76f51'},
+    'cae':       {'name': 'CAE',       'color': '#e63946'},
+    'groupfs':   {'name': 'GroupFS',   'color': '#800f2f'},
+    'stacsfs':   {'name': 'CLASP',     'color': '#0077b6'}
+}
+
+# The order they will appear in the bar chart and legend
+METHOD_ORDER = ['laplacian', 'ica', 'mcfs', 'spec', 'cae', 'groupfs', 'stacsfs']
+
+# Load the CSV
+df = pd.read_csv(FILE_PATH)
+
+# Apply Name Mapping
+df['method_display'] = df['method'].map(lambda x: METHOD_CONFIG.get(x, {}).get('name', x))
+
+# Prepare mapping tools for Seaborn
+DISPLAY_ORDER = [METHOD_CONFIG[m]['name'] for m in METHOD_ORDER]
+PALETTE = {METHOD_CONFIG[m]['name']: METHOD_CONFIG[m]['color'] for m in METHOD_ORDER}
+TARGET_LABEL = METHOD_CONFIG[TARGET_METHOD]['name']
+
+# 2. Compute Feature Recovery
+def calculate_feature_recovery(row):
+    true_set = set(str(row['true_features']).split(','))
+    selected_set = set(str(row['selected_features']).split(','))
+    
+    if not true_set or true_set == {''}:
+        return 0.0
+        
+    return len(true_set.intersection(selected_set)) / len(true_set)
+
+df['feature_recovery'] = df.apply(calculate_feature_recovery, axis=1)
+
+# 3. Data Aggregation for Heatmap (Delta Plot)
+df_mean = df.groupby(['method', 'method_display', 'rho', 'gamma'])['feature_recovery'].mean().reset_index()
+
+df_target = df_mean[df_mean['method'] == TARGET_METHOD]
+df_baselines = df_mean[df_mean['method'] != TARGET_METHOD]
+
+df_base_max = df_baselines.groupby(['rho', 'gamma'])['feature_recovery'].max().reset_index()
+
+fr_stacs = df_target.pivot(index='rho', columns='gamma', values='feature_recovery')
+fr_base = df_base_max.pivot(index='rho', columns='gamma', values='feature_recovery')
+fr_delta = fr_stacs - fr_base
+
+fr_delta.sort_index(ascending=False, inplace=True)
+
+# 4. Filter Data for Bar Plot (Slice where rho = 0.5)
+df_slice = df[df['rho'] == 0.5]
+
+# 5. Plotting (1x2 Grid)
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+ANNOT = True 
+CMAP_DELTA = 'RdBu' 
+
+# -- Left Plot: Delta Feature Recovery Heatmap --
+sns.heatmap(
+    fr_delta, 
+    ax=axes[0], 
+    cmap='Blues',        # Sequential palette maximizes contrast for 0.0 to 1.0 range
+    annot=ANNOT, 
+    fmt=".2f", 
+    cbar_kws={'label': r'$\Delta\text{FR}$'},
+    vmin=0,              # Lower bound tied to actual minimum (0.00)
+    vmax=1,
+    linewidths=0.5,      # Subtle white borders between heatmap cells
+    linecolor='white'
+)
+axes[0].set_title(
+    r'(a) $\mathbf{\Delta FR}$ (CLASP - Max Baseline)', 
+    fontsize=13, 
+    fontweight='bold', 
+    loc='center', 
+    pad=10
+)
+axes[0].set_ylabel(r'$\rho$', fontsize=12)
+axes[0].set_xlabel(r'$\gamma$', fontsize=12)
+
+# -- Right Plot: Flat Barplot for rho = 0.5 --
+sns.barplot(
+    data=df_slice,
+    x='gamma',
+    y='feature_recovery',
+    hue='method_display',
+    hue_order=DISPLAY_ORDER,
+    palette=PALETTE,
+    ax=axes[1],
+    errorbar=None,
+    width=0.85,          # Increases overall cluster width to make bars thicker
+    edgecolor='black',   # Adds crisp black borders
+    linewidth=0.8        # Controls thickness of the black outlines
+)
+axes[1].set_title(
+    r'(b) Feature Recovery ($\mathbf{\rho = 0.5}$)', 
+    fontsize=13, 
+    fontweight='bold', 
+    loc='center', 
+    pad=10
+)
+axes[1].set_ylim(0, 1.05)
+axes[1].grid(axis='y', linestyle='--', alpha=0.3, zorder=0) # Add subtle horizontal gridlines
+axes[1].set_axisbelow(True)
+axes[1].set_ylabel('Mean Feature Recovery', fontsize=12)
+axes[1].set_xlabel(r'$\gamma$', fontsize=12)
+
+# Move legend outside the plot
+axes[1].legend(title='Method', bbox_to_anchor=(1.05, 1), loc='upper left')
+
+plt.tight_layout()
+
+# Save figure
+output_file = "/projectnb/ace-ig/enrique/unsupervised_clustering/_stab_UFS/simulation/simulation/benchmark_results/stacs_fs_delta_and_barplot_clean.png"
+plt.savefig(output_file, dpi=300, bbox_inches='tight')
+print(f"Figure successfully saved to: {output_file}")
+
+plt.show()
