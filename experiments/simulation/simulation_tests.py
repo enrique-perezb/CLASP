@@ -7,18 +7,12 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 import warnings
 warnings.filterwarnings("ignore")
 
-import sys
 import time
-import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-# Move working directory to the project root so imports resolve
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
-sys.path.insert(0, ROOT)
-
 # Import existing ExperimentalSuite class
-from model.experiments_class import ExperimentalSuite
+from ..experiments_class import ExperimentalSuite
 
 
 # ============================================================
@@ -143,7 +137,7 @@ if __name__ == "__main__":
     rho_sweep = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     gamma_sweep = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     
-    target_methods = ["ica", "mcfs", "laplacian", "spec", "stacsfs", "cae", "groupfs"]
+    target_methods = ["ica", "mcfs", "laplacian", "spec", "cae", "groupfs", "clasp"]
 
     run_2d_sweep_features_only(
         suite=suite,

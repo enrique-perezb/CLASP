@@ -18,12 +18,13 @@ from model.experiments_class import ExperimentalSuite
 
 warnings.filterwarnings("ignore")
 
-### CONFIG ###
-
+# ============================================================
+# CONFIG
+# ============================================================
 TARGET_DIM = 100
 N_JOBS = 28
-OUTPUT_DIR = "../results"
-OUTPUT_FEATURE_CSV = os.path.join(OUTPUT_DIR, "ksweep_features_k100.csv")
+OUTPUT_DIR = ""  # FILL IN
+OUTPUT_FEATURE_CSV = os.path.join(OUTPUT_DIR, "")  # FILL IN
 
 N_SPLITS = 5
 GLOBAL_RANDOM_STATE = 43
@@ -89,7 +90,7 @@ for k_val in k_vals:
                 
                 # Execute feature selection dynamically via the suite mapping
                 try:
-                    if method_name == "stacsfs":
+                    if method_name == "clasp":
                         fit_result = method_map[method_name](X_train, d=TARGET_DIM, k=k_val, seed=fold_seed, n_jobs=N_JOBS)
                     else:
                         fit_result = method_map[method_name](X_train, d=TARGET_DIM, k=k_val, seed=fold_seed)

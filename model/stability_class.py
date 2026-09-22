@@ -8,10 +8,10 @@ from sklearn.preprocessing import normalize
 class StabilityLoss:
 
     def __init__(self, X, pct, num_subsamples, k):
-        self.X = X   # nxp, data
-        self.pct = pct   # scalar, percentage of participants per subsample
-        self.num_subsamples = num_subsamples   # scalar, number of subsamples for consensus matrix
-        self.k = k   # scalar, number of clusters
+        self.X = X
+        self.pct = pct
+        self.num_subsamples = num_subsamples
+        self.k = k
         self.sigma = np.median(pairwise_distances(X))
         if self.sigma == 0.0:
             self.sigma = 1e-5
@@ -34,7 +34,7 @@ class StabilityLoss:
             # Cluster subsample
             labels = self._cluster(X_sub)
 
-            # Reconstruct the EXACT affinity matrix used in _cluster
+            # Reconstruct the affinity matrix used in _cluster
             affinity = np.exp(-pairwise_distances(X_sub)**2 / (2 * self.sigma**2))
 
             # Extract the spectral embedding

@@ -1,140 +1,41 @@
+# Standard library imports
 import os
-import warnings
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
-from sklearn.cluster import KMeans, SpectralClustering
-from sklearn.metrics import silhouette_score, adjusted_rand_score, pairwise_distances
-from sklearn.decomposition import SparsePCA, FastICA
-from sklearn.neighbors import kneighbors_graph
-from scipy.sparse.csgraph import laplacian
 from scipy.linalg import eigh
-from skfeature.function.similarity_based import SPEC
-from skfeature.function.similarity_based import lap_score
+from scipy.sparse.csgraph import laplacian
+from skfeature.function.similarity_based import SPEC, lap_score
 from skfeature.utility.construct_W import construct_W
-from skfeature.function.sparse_learning_based import NDFS
-from sklearn.metrics.pairwise import cosine_similarity
-from scipy.special import softmax
-from sklearn.cluster import KMeans
-from scipy.optimize import minimize
+from sklearn.cluster import KMeans, SpectralClustering
+from sklearn.decomposition import FastICA
+from sklearn.metrics.pairwise import pairwise_distances
 from sklearn.neighbors import kneighbors_graph
-
-import numpy as np
-import math
-from sklearn.neighbors import kneighbors_graph
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from sklearn.cluster import KMeans
 
-import numpy as np
-import scipy
-import math
-from skfeature.utility.sparse_learning import generate_diagonal_matrix, calculate_l21_norm
-from sklearn.metrics.pairwise import pairwise_distances
-
-import os
-import tempfile
-import vbvarsel.vbvarsel as vbvs
-from vbvarsel.global_parameters import Hyperparameters
-
-import scipy.linalg
-from sklearn.preprocessing import KBinsDiscretizer
-from sklearn.metrics import mutual_info_score
-
-import random
-
-import sklearn.cluster
-
-# Save the original KMeans class
-_OriginalKMeans = sklearn.cluster.KMeans
-
-# Create a patched version that ignores deprecated arguments
-class PatchedKMeans(_OriginalKMeans):
-    def __init__(self, **kwargs):
-        # Remove old skfeature arguments that modern sklearn hates
-        kwargs.pop('precompute_distances', None)
-        kwargs.pop('n_jobs', None)
-        super().__init__(**kwargs)
-
-# Overwrite sklearn's KMeans with our patched version globally
-sklearn.cluster.KMeans = PatchedKMeans
-
-# Import your custom feature selection class
-try:
-    from model.featureselection_class import UnsupervisedFeatureSelection
-except ImportError:
-    UnsupervisedFeatureSelection = None
-
-
-class ConcreteAutoencoder(nn.Module):
-    def __init__(self, input_dim: int, num_features: int):
-        super().__init__()
-        self.logits = nn.Parameter(torch.nn.init.xavier_normal_(torch.empty(num_features, input_dim)))
-        self.decoder = nn.Sequential(
-            nn.Linear(num_features, max(num_features * 2, input_dim // 2)),
-            nn.ReLU(),
-            nn.Linear(max(num_features * 2, input_dim // 2), input_dim)
-        )
-
-    def forward(self, x, temp, hard=False):
-        weights = F.gumbel_softmax(self.logits, tau=temp, hard=hard, dim=-1)
-        selected_features = torch.matmul(x, weights.t())
-        reconstruction = self.decoder(selected_features)
-        return reconstruction
-    
-
-import numpy as np
-import pandas as pd
-import random
-
+from model.featureselection_class import CLASP
 
 class ExperimentalSuite:
     """
-    A unified suite for generating sparse clustered data, evaluating unsupervised
-    feature selection algorithms, running clustering baselines, and plotting benchmark results.
+    A unified suite for generating sparse clustered data and running clustering baselines.
     """
-
     def __init__(
         self,
         k: int = 2,
         n_repeats: int = 3,
         out_dir: str = "./benchmark_results",
-        method_order: list = None,
-        method_colors: dict = None,
     ):
         self.k = k
         self.n_repeats = n_repeats
         self.out_dir = out_dir
         os.makedirs(self.out_dir, exist_ok=True)
 
-        self.method_order = method_order or [
-            "kmeans",
-            "spectral",
-            "spca",
-            "ica",
-            "laplacian",
-            "mcfs",
-            "csgfs",
-        ]
-
-        self.method_colors = method_colors or {
-            "kmeans": "tab:blue",
-            "spectral": "tab:orange",
-            "spca": "tab:green",
-            "ica": "tab:red",
-            "laplacian": "tab:purple",
-            "mcfs": "tab:brown",
-            "csgfs": "tab:pink",
-        }
-
     # ============================================================
-    # DATA GENERATION
+    # DATA GENERATING FUNCTION FOR SIMULATION EXPERIMENTS
     # ============================================================
+
     def generate_data(
         self,
         n=200,
@@ -149,13 +50,7 @@ class ExperimentalSuite:
         seed=42,
     ):
         """
-        Simulates sparse cluster data with a 'Perfect Decoy' distractor block.
-
-        - Signal Block: Driven by conditional correlation `rho` and mean shift `delta`.
-        - Distractor Block: Matches the signal block's total marginal footprint 
-        (1.0 + 0.25*delta^2) using `gamma` to mimic signal correlation without label separation.
-        - Independent Noise Block: Diagonal variance set by `noise_var` (default 2.0).
-        - Unconditionally PSD for all valid rho, gamma in [0.0, 1.0].
+        Simulates sparse cluster data according to Section 4.1
         """
         if p < 2 * d:
             raise ValueError(
@@ -342,22 +237,10 @@ class ExperimentalSuite:
             "labels": labels,
         }
     
-
     def method_spec(self, X: np.ndarray, d: int, k: int = None, seed: int = 42) -> dict:
-        """
-        Executes SPEC feature selection using skfeature with explicit 
-        affinity graph construction to prevent RBF underflow.
-        """
-        if SPEC is None or construct_W is None:
-            raise ImportError(
-                "skfeature is not installed. Install via 'pip install scikit-feature' "
-                "or 'pip install skfeature-chappers'."
-            )
-
         k_val = self.k if k is None else k
 
         # 1. Build a robust affinity matrix (5-NN graph with heat kernel/cosine)
-        # Prevents rbf_kernel(gamma=1) from underflowing to zeros in high dimensions
         kwargs_W = {"neighbor_mode": "knn", "k": 5, "metric": "euclidean"}
         W = construct_W(X, **kwargs_W)
 
@@ -379,6 +262,22 @@ class ExperimentalSuite:
         }
 
     def method_cae(self, X: np.ndarray, d: int, k: int = None, seed: int = 42) -> dict:
+        class ConcreteAutoencoder(nn.Module):
+            def __init__(self, input_dim: int, num_features: int):
+                super().__init__()
+                self.logits = nn.Parameter(torch.nn.init.xavier_normal_(torch.empty(num_features, input_dim)))
+                self.decoder = nn.Sequential(
+                    nn.Linear(num_features, max(num_features * 2, input_dim // 2)),
+                    nn.ReLU(),
+                    nn.Linear(max(num_features * 2, input_dim // 2), input_dim)
+                )
+
+            def forward(self, x, temp, hard=False):
+                weights = F.gumbel_softmax(self.logits, tau=temp, hard=hard, dim=-1)
+                selected_features = torch.matmul(x, weights.t())
+                reconstruction = self.decoder(selected_features)
+                return reconstruction
+
         torch.manual_seed(seed)
         np.random.seed(seed)
 
@@ -437,9 +336,6 @@ class ExperimentalSuite:
         }
 
     def method_groupfs(self, X: np.ndarray, d: int, k: int = None, seed: int = 42) -> dict:
-        """
-        GroupFS implementation with group-level ranking and intra-group variance tie-breaking.
-        """
         np.random.seed(seed)
         torch.manual_seed(seed)
         
@@ -471,7 +367,7 @@ class ExperimentalSuite:
             def __init__(self, num_features, C, pi_init):
                 super().__init__()
                 self.logits = nn.Parameter(torch.tensor(pi_init, dtype=torch.float32))
-                self.mu = nn.Parameter(torch.zeros(C))  # Sigmoid maps 0.0 -> 0.5 initial importance
+                self.mu = nn.Parameter(torch.zeros(C))
                 self.Q = nn.Parameter(torch.randn(C, C))
                 
             def forward(self, X_batch, tau=1.0, sigma=0.1):
@@ -529,14 +425,12 @@ class ExperimentalSuite:
         with torch.no_grad():
             _, M_final, _, z_final = model(X_tensor, tau=0.1)
             
-            group_scores = z_final.numpy()                   # Shape: (C,)
-            M_np = M_final.numpy()                          # Shape: (num_features, C)
-            feature_labels = np.argmax(M_np, axis=1)        # Hard cluster assignment per feature
+            group_scores = z_final.numpy()
+            M_np = M_final.numpy()
+            feature_labels = np.argmax(M_np, axis=1)
             
-            # Map each feature to its group's learned score
             feature_group_scores = group_scores[feature_labels]
             
-            # Secondary metric: individual feature variance
             feat_var = np.var(X, axis=0)
 
         # Hierarchical Sorting: Primary = Group Score, Secondary = Feature Variance
@@ -550,25 +444,22 @@ class ExperimentalSuite:
             "labels": feature_labels,
         }
 
-    def method_stacsfs(
+    def method_clasp(
         self, X: np.ndarray, d: int, k: int = None, seed: int = 42, n_jobs: int = 28
     ) -> dict:
-        """
-        Custom Unsupervised Feature Selection method (STACSFS).
-        """
-        if UnsupervisedFeatureSelection is None:
+        if CLASP is None:
             raise ImportError("UnsupervisedFeatureSelection module not loaded.")
 
         k_val = self.k if k is None else k
         np.random.seed(seed)
 
-        ufs = UnsupervisedFeatureSelection(
+        ufs = CLASP(
             X=X,
             k=k_val,
-            rho=d / X.shape[1],
+            target_pct=d / X.shape[1],
             alpha=0.2,
             gamma=0.15,
-            N=400,
+            M=400,
             lambda_corr=0.3,
             pct_participants=0.2,
             num_participant_samples=50,
@@ -593,8 +484,8 @@ class ExperimentalSuite:
             "ica": self.method_ica,
             "laplacian": self.method_laplacian,
             "mcfs": self.method_mcfs,
-            "stacsfs": self.method_stacsfs,
             "spec": self.method_spec,
             "cae": self.method_cae,
-            "groupfs": self.method_groupfs
+            "groupfs": self.method_groupfs,
+            "clasp": self.method_clasp,
         }

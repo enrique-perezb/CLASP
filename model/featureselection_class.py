@@ -1,38 +1,32 @@
-import os
-
 from .stability_class import StabilityLoss
 
 import numpy as np
 from joblib import Parallel, delayed
-import multiprocessing
-import time
 
-class UnsupervisedFeatureSelection:
-
+class CLASP:
     def __init__(self, 
                  X, 
                  k,
-                 rho,
+                 target_pct,
                  alpha,
                  gamma,
-                 N,
+                 M,
                  lambda_corr,
                  pct_participants, 
                  num_participant_samples, 
                  n_jobs
                  ):
-        print('Starting UFS')
-        self.X = X   # nxp
+        self.X = X
         self.n, self.p = np.shape(X)[0], np.shape(X)[1]
         self.k = k
 
         self.pct_participants = pct_participants
         self.num_participant_samples = num_participant_samples
 
-        self.rho = rho
+        self.target_pct = target_pct
         self.alpha = alpha
         self.gamma = gamma
-        self.N = N
+        self.M = M
         self.lambda_corr = lambda_corr
 
         self.n_jobs=n_jobs
@@ -47,20 +41,20 @@ class UnsupervisedFeatureSelection:
         self.pi_hist = []
     
     def select_features(self, max_iter=100, patience=20):
-        pi = np.ones(shape=self.p) * self.rho
-        top_k = int(self.rho * self.p)
+        pi = np.ones(shape=self.p) * self.target_pct
+        top_k = int(self.target_pct * self.p)
         
         patience_counter = 0
         prev_top_features = None
 
         for it in range(max_iter):
             # 1. Gumbel-top-k sampling
-            gumbel_noise = np.random.gumbel(loc=0, scale=1, size=(self.p, self.N))
+            gumbel_noise = np.random.gumbel(loc=0, scale=1, size=(self.p, self.M))
             log_pi = np.log(pi)
             corr_boost = self.lambda_corr * (self.R @ pi)
             
             sampled_features = []
-            for j in range(self.N):
+            for j in range(self.M):
                 scores = log_pi + gumbel_noise[:, j] + corr_boost
                 idx = np.argsort(scores)[::-1][:top_k]
                 sampled_features.append(idx)
@@ -73,7 +67,7 @@ class UnsupervisedFeatureSelection:
 
             # 3. Select elites and update pi
             stab = np.array(stab)
-            n_elite = int(np.floor(self.gamma * self.N))
+            n_elite = int(np.floor(self.gamma * self.M))
             elites_idx = np.argpartition(stab, -n_elite)[-n_elite:]
 
             elite_sets = sampled_features[elites_idx]
@@ -96,7 +90,6 @@ class UnsupervisedFeatureSelection:
                 prev_top_features = current_top_features
 
             if patience_counter >= patience:
-                print(f"Early stopping triggered at iteration {it}: Top {top_k} features unchanged for {patience} iterations.")
                 break
 
         return pi
